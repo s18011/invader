@@ -13,14 +13,13 @@ const ASSETS = {
         "toma": "./assets/image/tomapiyo.png"
     }
 };
+
+
 const ENEMY_ASSETS = [
     "buro", "mero", "mika", "nasu", "take"
 ];
-const ENEMY_SIZE = 64;  // 敵のサイズ
-const ENEMY_NUM = 6;   // 敵生成の最大数
-const ENEMY_INTERVAL = 300; // 敵を生成する間隔
 
-
+let SCORE = 0;
 
 
 phina.define('MainScene', {
@@ -40,17 +39,24 @@ phina.define('MainScene', {
 
         // 複数の敵を登録する対象
         this.enemyGroup = EnemyGroup().addChildTo(this);
-        for (x=3; x<8; x++) {
-            for (y=3; y<8; y++) {
-                Enemy(this.gridX.span(x * 3), this.gridY.span(y * 3), ENEMY_ASSETS[x % 5]).addChildTo(this.enemyGroup);
+        for (x=2; x<14; x++) {
+            for (y=1; y<7; y++) {
+                Enemy(this.gridX.span(x * 3), this.gridY.span(y * 4), ENEMY_ASSETS[x % 5]).addChildTo(this.enemyGroup);
             }
         }
 
         // 敵が発射したミサイルを登録する対象
         this.missileGroup = DisplayElement().addChildTo(this);
 
+        // ゲームクリア
+        if (this.enemyGroup.children.length <= 0) {
+            SCORE += 1000;
+            this.exit();
+        }
+
     },
     update: function (app) {
+        if (this.enemyGroup.children.length <= 0) this.exit();
         // ミサイルと弾の当たり判定
         if (this.player.bullet != null) {
             this.missileGroup.children.some(missile => {
@@ -60,6 +66,9 @@ phina.define('MainScene', {
                 }
             })
         }
+
+
+
         // 弾と敵の当たり判定
         if (this.player.bullet != null) {
             this.enemyGroup.children.some(enemy => {
@@ -67,6 +76,7 @@ phina.define('MainScene', {
                     // 直接それぞれのメソッドを呼ばずにイベントで対応させる。
                     enemy.flare('hit');
                     this.player.bullet.flare('hit');
+                    SCORE += 100;
                     return true;
                 }
 
@@ -78,8 +88,21 @@ phina.define('MainScene', {
             if (missile.hitTestElement(this.player)) {
                 missile.flare('hit');
                 this.player.flare('hit');
+                this.exit();
             }
         })
+    }
+});
+
+phina.define('ResultScene', {
+    superClass: 'ResultScene',
+    init: function () {
+        this.superInit({
+            score: SCORE,
+            width: SCREEN_WIDTH,
+            height: SCREEN_HEIGHT
+        });
+        SCORE = 0;
     }
 });
 
@@ -139,7 +162,7 @@ phina.define('Bullet', {
         this.x = x;
         this.y = y;
         this.isInvalid = false;
-        this.SPEED = 5;
+        this.SPEED = 50;
     },
 
     // 弾を画面上から消して無効にするイベントリスナ(なにかに当たった)
@@ -219,6 +242,7 @@ phina.define('EnemyGroup', {
         this.time = 0;
         this.interval = 2000;
         this.direction = 1;
+        this.onWall = false;
     },
     update: function (app) {
         // deltaTimeを加算していって経過時間を計る
@@ -228,6 +252,13 @@ phina.define('EnemyGroup', {
         let right = 0;
         let left = scene.gridX.columns;
 
+        if (this.time / this.interval >= 0.5 && this.onWall) {
+            this.children.forEach(enemy => {
+               enemy.moveBy(0, scene.gridY.unit())
+            });
+            this.onWall = false;
+        }
+
         if (this.time / this.interval >= 1) {
             this.children.forEach(enemy => {
                 enemy.moveBy(scene.gridX.unit() * this.direction, 0);
@@ -236,14 +267,20 @@ phina.define('EnemyGroup', {
                 // 全体の左端のポジションを計算
                 left = Math.min(left, enemy.x / scene.gridX.unit());
             });
+            this.shot();
             this.time -= this.interval;
         }
 
-        // 移動の向きを変更するタイミング
+        //
         if (this.direction > 0 && right >= 38
             || this.direction < 0 && left <= 2) {
+            this.onWall = true;
             this.direction = -this.direction
         }
+    },
+    shot: function () {
+        let enemy = this.children[Math.floor(Math.random() * this.children.length)];
+        Missile(enemy.x, enemy.y + enemy.height).addChildTo(this.parent.missileGroup);
     }
 });
 
